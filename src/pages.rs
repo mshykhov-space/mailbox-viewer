@@ -58,11 +58,19 @@ pub fn inbox_page(share: &Share, messages: &[Message], stale: bool) -> String {
     } else {
         ""
     };
+    let label = label_or_alias(share);
+    let title = if label.eq_ignore_ascii_case(&share.alias) {
+        format!("<h1>{}</h1>", escape_html(label))
+    } else {
+        format!(
+            "<h1>{}</h1><span class=\"alias\">{}</span>",
+            escape_html(label),
+            escape_html(&share.alias)
+        )
+    };
     let header = format!(
-        "<header class=\"page\"><h1>{label}</h1><span class=\"alias\">{alias}</span>\
+        "<header class=\"page\">{title}\
 <span class=\"meta\">read only · {count} messages</span></header>{notice}",
-        label = escape_html(label_or_alias(share)),
-        alias = escape_html(&share.alias),
         count = messages.len()
     );
     layout(
