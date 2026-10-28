@@ -7,10 +7,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && echo "" > src/lib.rs \
-    && cargo build --release \
-    && rm -rf src
-
 COPY src src
 RUN cargo build --release
 
