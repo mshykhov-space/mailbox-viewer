@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use base64::Engine as _;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD};
 use reqwest::{Client, Url};
 use serde::Deserialize;
 use serde_json::Value;
@@ -104,6 +104,32 @@ impl GmailClient {
         }
         response.json().await.context("decoding Gmail response")
     }
+
+    async fn load_pending(&self, message_id: &str, parts: &mut BodyParts) {
+        let pending = std::mem::take(&mut parts.pending);
+        for part in pending {
+            let url = Url::parse(&format!(
+                "{GMAIL_BASE}/messages/{message_id}/attachments/{}",
+                part.attachment_id
+            ));
+            let Ok(url) = url else { continue };
+            let Ok(value) = self.get_json(url).await else {
+                continue;
+            };
+            let Some(data) = value.get("data").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(bytes) = decode_base64(data) else {
+                continue;
+            };
+            let text = String::from_utf8_lossy(&bytes).to_string();
+            match part.mime.as_str() {
+                "text/plain" => parts.plain.push_str(&text),
+                "text/html" => parts.html.push_str(&text),
+                _ => {}
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -130,8 +156,13 @@ impl MailSource for GmailClient {
         for id in ids {
             let mut url = Url::parse(&format!("{GMAIL_BASE}/messages/{id}")).expect("static URL");
             url.query_pairs_mut().append_pair("format", "full");
-            let message = self.get_json(url).await?;
-            messages.push(parse_message(&message)?);
+            let raw = self.get_json(url).await?;
+            let (mut message, mut parts) = parse_message(&raw)?;
+            if !parts.pending.is_empty() {
+                self.load_pending(&message.id, &mut parts).await;
+            }
+            message.body = parts.text().trim().to_string();
+            messages.push(message);
         }
         messages.sort_by_key(|message| std::cmp::Reverse(message.received_at));
         Ok(messages)
@@ -144,7 +175,36 @@ struct TokenResponse {
     expires_in: u64,
 }
 
-fn parse_message(value: &Value) -> Result<Message> {
+fn decode_base64(data: &str) -> Option<Vec<u8>> {
+    URL_SAFE_NO_PAD
+        .decode(data)
+        .or_else(|_| URL_SAFE.decode(data))
+        .ok()
+}
+
+#[derive(Default)]
+struct BodyParts {
+    plain: String,
+    html: String,
+    pending: Vec<PendingPart>,
+}
+
+struct PendingPart {
+    mime: String,
+    attachment_id: String,
+}
+
+impl BodyParts {
+    fn text(&self) -> String {
+        if !self.plain.trim().is_empty() {
+            self.plain.clone()
+        } else {
+            html_to_text(&self.html)
+        }
+    }
+}
+
+fn parse_message(value: &Value) -> Result<(Message, BodyParts)> {
     let id = value
         .get("id")
         .and_then(Value::as_str)
@@ -179,32 +239,27 @@ fn parse_message(value: &Value) -> Result<Message> {
             .unwrap_or_default()
             .to_string()
     };
-    let body = payload.map(extract_body).unwrap_or_default();
-    Ok(Message {
-        id,
-        thread_id,
-        from: header("From"),
-        subject: header("Subject"),
-        received_at,
-        body: body.trim().to_string(),
-    })
-}
-
-fn extract_body(payload: &Value) -> String {
-    let mut plain = String::new();
-    let mut html = String::new();
-    collect_parts(payload, &mut plain, &mut html);
-    if !plain.trim().is_empty() {
-        plain
-    } else {
-        html_to_text(&html)
+    let mut parts = BodyParts::default();
+    if let Some(payload) = payload {
+        collect_parts(payload, &mut parts);
     }
+    Ok((
+        Message {
+            id,
+            thread_id,
+            from: header("From"),
+            subject: header("Subject"),
+            received_at,
+            body: String::new(),
+        },
+        parts,
+    ))
 }
 
-fn collect_parts(payload: &Value, plain: &mut String, html: &mut String) {
-    if let Some(parts) = payload.get("parts").and_then(Value::as_array) {
-        for part in parts {
-            collect_parts(part, plain, html);
+fn collect_parts(payload: &Value, parts: &mut BodyParts) {
+    if let Some(children) = payload.get("parts").and_then(Value::as_array) {
+        for part in children {
+            collect_parts(part, parts);
         }
         return;
     }
@@ -212,26 +267,34 @@ fn collect_parts(payload: &Value, plain: &mut String, html: &mut String) {
         .get("mimeType")
         .and_then(Value::as_str)
         .unwrap_or_default();
-    let data = payload
-        .get("body")
+    if !matches!(mime, "text/plain" | "text/html") {
+        return;
+    }
+    let body = payload.get("body");
+    if let Some(data) = body
         .and_then(|body| body.get("data"))
-        .and_then(Value::as_str);
-    let Some(data) = data else { return };
-    let decoded = URL_SAFE_NO_PAD
-        .decode(data)
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-        .unwrap_or_default();
-    match mime {
-        "text/plain" => {
-            plain.push_str(&decoded);
-            plain.push('\n');
+        .and_then(Value::as_str)
+    {
+        if let Some(bytes) = decode_base64(data) {
+            let text = String::from_utf8_lossy(&bytes).to_string();
+            if mime == "text/plain" {
+                parts.plain.push_str(&text);
+                parts.plain.push('\n');
+            } else {
+                parts.html.push_str(&text);
+                parts.html.push('\n');
+            }
         }
-        "text/html" => {
-            html.push_str(&decoded);
-            html.push('\n');
-        }
-        _ => {}
+        return;
+    }
+    if let Some(attachment_id) = body
+        .and_then(|body| body.get("attachmentId"))
+        .and_then(Value::as_str)
+    {
+        parts.pending.push(PendingPart {
+            mime: mime.to_string(),
+            attachment_id: attachment_id.to_string(),
+        });
     }
 }
 
@@ -262,8 +325,8 @@ mod tests {
                 ]
             }
         });
-        let message = parse_message(&value).unwrap();
-        assert_eq!(message.body, "Your code is 123");
+        let (message, body) = parse_message(&value).unwrap();
+        assert_eq!(body.text().trim(), "Your code is 123");
         assert_eq!(message.subject, "Code 123");
         assert_eq!(message.received_at, 1_700_000_000);
     }
@@ -278,6 +341,9 @@ mod tests {
                 "body": {"data": encoded("<p>Hello</p><p>World</p>")}
             }
         });
-        assert_eq!(parse_message(&value).unwrap().body, "Hello\nWorld");
+        assert_eq!(
+            parse_message(&value).unwrap().1.text().trim(),
+            "Hello\nWorld"
+        );
     }
 }
