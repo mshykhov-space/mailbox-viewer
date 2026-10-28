@@ -62,10 +62,7 @@ async fn health() -> &'static str {
 async fn not_found() -> Response {
     (
         StatusCode::NOT_FOUND,
-        Html(pages::state_page(
-            "Страница не найдена",
-            "Проверьте ссылку.",
-        )),
+        Html(pages::state_page("Page not found", "Check the link.")),
     )
         .into_response()
 }
@@ -78,8 +75,8 @@ async fn public_page(State(state): State<Arc<AppState>>, Path(token): Path<Strin
         return (
             StatusCode::GONE,
             Html(pages::state_page(
-                "Доступ закрыт",
-                "Владелец отозвал эту ссылку или истёк срок действия.",
+                "Access closed",
+                "The owner revoked this link, or it has expired.",
             )),
         )
             .into_response();
@@ -107,8 +104,8 @@ async fn public_page(State(state): State<Arc<AppState>>, Path(token): Path<Strin
                     return (
                         StatusCode::BAD_GATEWAY,
                         Html(pages::state_page(
-                            "Почта недоступна",
-                            "Не удалось прочитать письма. Попробуйте обновить страницу позже.",
+                            "Mailbox unavailable",
+                            "Could not read messages. Reload the page later.",
                         )),
                     )
                         .into_response();

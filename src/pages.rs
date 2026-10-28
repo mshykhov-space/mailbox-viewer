@@ -37,7 +37,7 @@ article .empty { color: #6b7280; font-size: 13px; }
 
 pub fn layout(title: &str, body: &str) -> String {
     format!(
-        "<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\">\
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
 <meta name=\"robots\" content=\"noindex, nofollow, noarchive\">\
 <title>{title}</title><style>{STYLE}</style></head><body><main>{body}</main></body></html>",
@@ -48,32 +48,32 @@ pub fn layout(title: &str, body: &str) -> String {
 pub fn inbox_page(share: &Share, messages: &[Message], stale: bool) -> String {
     let mut cards = String::new();
     if messages.is_empty() {
-        cards.push_str("<div class=\"state\"><h1>Писем нет</h1><p>На этот адрес пока ничего не приходило.</p></div>");
+        cards.push_str("<div class=\"state\"><h1>No messages</h1><p>Nothing has arrived at this address yet.</p></div>");
     }
     for message in messages {
         cards.push_str(&message_card(message));
     }
     let notice = if stale {
-        "<p class=\"notice\">Gmail сейчас недоступен. Показаны последние сохранённые письма.</p>"
+        "<p class=\"notice\">Gmail is unavailable right now. Showing the last saved messages.</p>"
     } else {
         ""
     };
     let header = format!(
         "<header class=\"page\"><h1>{label}</h1><span class=\"alias\">{alias}</span>\
-<span class=\"meta\">только чтение · {count} писем</span></header>{notice}",
+<span class=\"meta\">read only · {count} messages</span></header>{notice}",
         label = escape_html(label_or_alias(share)),
         alias = escape_html(&share.alias),
         count = messages.len()
     );
     layout(
-        &format!("Почта {}", share.alias),
+        &format!("Mailbox {}", share.alias),
         &format!("{header}{cards}"),
     )
 }
 
 pub fn message_card(message: &Message) -> String {
     let body = if message.body.trim().is_empty() {
-        "<p class=\"empty\">Нет текстовой части письма.</p>".to_string()
+        "<p class=\"empty\">No text part in this message.</p>".to_string()
     } else {
         format!(
             "<pre>{}</pre>",
@@ -83,9 +83,9 @@ pub fn message_card(message: &Message) -> String {
     format!(
         "<article><div class=\"head\"><span class=\"from\">{from}</span><span class=\"date\">{date}</span></div>\
 <div class=\"subject\">{subject}</div>{body}</article>",
-        from = escape_html(&fallback(&message.from, "Неизвестный отправитель")),
+        from = escape_html(&fallback(&message.from, "Unknown sender")),
         date = escape_html(&format_time(message.received_at)),
-        subject = escape_html(&fallback(&message.subject, "(без темы)"))
+        subject = escape_html(&fallback(&message.subject, "(no subject)"))
     )
 }
 
@@ -161,6 +161,6 @@ mod tests {
     #[test]
     fn shows_empty_state() {
         let html = inbox_page(&share(), &[], false);
-        assert!(html.contains("Писем нет"));
+        assert!(html.contains("No messages"));
     }
 }
