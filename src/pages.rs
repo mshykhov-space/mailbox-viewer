@@ -12,7 +12,8 @@ body { margin: 0; background: #f4f5f7; color: #16181d; font: 15px/1.55 -apple-sy
 main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
 header.page { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; padding: 16px 0 8px; border-bottom: 1px solid #d8dbe1; }
 header.page h1 { margin: 0; font-size: 19px; }
-header.page .alias { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: #555c69; }
+header.page .alias { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 18px; }
+header.page .label { padding: 2px 8px; border: 1px solid #d8dbe1; border-radius: 4px; font-size: 12px; color: #555c69; }
 header.page .meta { margin-left: auto; font-size: 12px; color: #6b7280; }
 .notice { margin: 16px 0; padding: 10px 12px; border-left: 3px solid #d97706; background: #fff7ed; font-size: 13px; }
 article { margin: 16px 0; padding: 14px 16px; background: #fff; border: 1px solid #e1e4ea; border-radius: 8px; }
@@ -32,6 +33,7 @@ article .more { margin-top: 8px; }
   body { background: #14161a; color: #e6e8ec; }
   header.page { border-color: #2a2f37; }
   header.page .alias, header.page .meta, article .date, article .empty { color: #9aa3b2; }
+  header.page .label { border-color: #2a2f37; color: #9aa3b2; }
   article { background: #1b1e24; border-color: #2a2f37; }
   article pre { background: #12151a; }
   article .code { background: #1e3a8a; color: #dbeafe; }
@@ -63,14 +65,15 @@ pub fn inbox_page(share: &Share, messages: &[Message], stale: bool) -> String {
     } else {
         ""
     };
-    let label = label_or_alias(share);
-    let title = if label.eq_ignore_ascii_case(&share.alias) {
-        format!("<h1>{}</h1>", escape_html(label))
+    let alias = share.alias.trim();
+    let label = share.label.trim();
+    let title = if label.is_empty() || label.eq_ignore_ascii_case(alias) {
+        format!("<h1 class=\"alias\">{}</h1>", escape_html(alias))
     } else {
         format!(
-            "<h1>{}</h1><span class=\"alias\">{}</span>",
-            escape_html(label),
-            escape_html(&share.alias)
+            "<h1 class=\"alias\">{}</h1><span class=\"label\">{}</span>",
+            escape_html(alias),
+            escape_html(label)
         )
     };
     let header = format!(
@@ -222,14 +225,6 @@ pub fn state_page(title: &str, text: &str) -> String {
             escape_html(text)
         ),
     )
-}
-
-fn label_or_alias(share: &Share) -> &str {
-    if share.label.trim().is_empty() {
-        &share.alias
-    } else {
-        &share.label
-    }
 }
 
 fn fallback(value: &str, replacement: &str) -> String {
