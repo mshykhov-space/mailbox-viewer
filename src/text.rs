@@ -121,20 +121,11 @@ fn numeric_entity(tail: &str) -> Option<(usize, char)> {
 }
 
 fn collapse_blank_lines(input: &str) -> String {
-    let mut lines: Vec<&str> = Vec::new();
-    for line in input.lines() {
-        let trimmed = line.trim_end();
-        if trimmed.trim().is_empty() && lines.last().is_some_and(|last| last.trim().is_empty()) {
-            continue;
-        }
-        lines.push(trimmed);
-    }
-    while lines.first().is_some_and(|line| line.trim().is_empty()) {
-        lines.remove(0);
-    }
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
-        lines.pop();
-    }
+    let lines: Vec<&str> = input
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
     lines.join("\n")
 }
 
