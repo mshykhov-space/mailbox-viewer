@@ -58,7 +58,7 @@ fn skip_until_close(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, name: 
             window.remove(0);
         }
         if window.eq_ignore_ascii_case(&needle) {
-            while let Some(next) = chars.next() {
+            for next in chars.by_ref() {
                 if next == '>' {
                     break;
                 }

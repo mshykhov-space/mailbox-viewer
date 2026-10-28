@@ -162,8 +162,8 @@ async fn create_share(
     headers: HeaderMap,
     payload: Result<Json<CreateShareRequest>, JsonRejection>,
 ) -> Response {
-    if let Err(response) = authorize(&state, &headers) {
-        return response;
+    if !authorized(&state, &headers) {
+        return unauthorized();
     }
     let Json(request) = match payload {
         Ok(payload) => payload,
@@ -197,8 +197,8 @@ async fn create_share(
 }
 
 async fn list_shares(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    if let Err(response) = authorize(&state, &headers) {
-        return response;
+    if !authorized(&state, &headers) {
+        return unauthorized();
     }
     match state.store.list_shares() {
         Ok(shares) => Json(
@@ -217,8 +217,8 @@ async fn revoke_share(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    if let Err(response) = authorize(&state, &headers) {
-        return response;
+    if !authorized(&state, &headers) {
+        return unauthorized();
     }
     match state.store.revoke_share(&id) {
         Ok(true) => {
@@ -241,8 +241,8 @@ async fn rotate_share(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Response {
-    if let Err(response) = authorize(&state, &headers) {
-        return response;
+    if !authorized(&state, &headers) {
+        return unauthorized();
     }
     match state.store.rotate_share(&id) {
         Ok(Some((share, token))) => {
@@ -284,22 +284,22 @@ impl ShareView {
     }
 }
 
-fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), Response> {
+fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
     let provided = headers
         .get("x-admin-key")
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
-    if constant_time_eq(provided.as_bytes(), state.admin_key.as_bytes()) {
-        Ok(())
-    } else {
-        Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorBody {
-                error: "invalid admin key".into(),
-            }),
-        )
-            .into_response())
-    }
+    constant_time_eq(provided.as_bytes(), state.admin_key.as_bytes())
+}
+
+fn unauthorized() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorBody {
+            error: "invalid admin key".into(),
+        }),
+    )
+        .into_response()
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
