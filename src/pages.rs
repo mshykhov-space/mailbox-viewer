@@ -40,6 +40,7 @@ pub fn layout(title: &str, body: &str) -> String {
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
 <meta name=\"robots\" content=\"noindex, nofollow, noarchive\">\
+<meta http-equiv=\"refresh\" content=\"30\">\
 <title>{title}</title><style>{STYLE}</style></head><body><main>{body}</main></body></html>",
         title = escape_html(title)
     )
